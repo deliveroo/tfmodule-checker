@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 var (
 	ModuleRepo    = "https://tfmodules.deliveroo.net/"
 	ModuleJSONURL = ModuleRepo + "modules.json"
+	DEBUG         = false
 )
 
 type moduleInfo struct {
@@ -33,9 +35,17 @@ type modulesInfo struct {
 
 type moduleIndex map[string]moduleInfo
 
+// generic debug wrapper
+func debug(msg string) {
+	if DEBUG {
+		fmt.Printf("DEBUG: %s", msg)
+	}
+}
+
 // downloadJSON fetches a document from a URL and returns it a sa string
 func downloadFile(url string) (moduleJSON []byte, err error) {
 
+	debug(fmt.Sprintf("Getting index file from %s", url))
 	resp, err := http.Get(url)
 	if err != nil {
 		fmt.Printf("FAILED to download file from %s: %s\n", url, err)
@@ -99,11 +109,13 @@ func checkModuleVersion(name, version string, modules moduleIndex) bool {
 
 	latest := "n/a"
 	older := false
+	olderText := "older"
 	if v, ok := modules[name]; ok {
 		latest = v.Version
 		older = version < latest
+		olderText = "not older"
 	}
-	//fmt.Printf("%s: %s vs %s is %t\n", name, version, latest, older)
+	debug(fmt.Sprintf("%s is %s (%s vs %s)\n", name, olderText, version, latest))
 	return older
 }
 
@@ -117,6 +129,21 @@ func makeModuleInfoHash(data []moduleInfo) (map[string]moduleInfo, error) {
 }
 
 func main() {
+
+	var root string
+
+	flag.BoolVar(&DEBUG, "debug", false, "Enable debug on")
+	flag.StringVar(&root, "root", "", "Root of local directory to scan")
+	flag.Parse()
+
+	if len(root) == 0 {
+		fmt.Printf("path to scan not set")
+		os.Exit(1)
+	}
+
+	if DEBUG {
+		debug("Debug mode is on")
+	}
 
 	buf, err := downloadFile(ModuleJSONURL)
 	if err != nil {
@@ -132,7 +159,6 @@ func main() {
 	var modules = make(moduleIndex)
 	modules, err = makeModuleInfoHash(modulesJSON.Modules)
 
-	root := "/home/bikochan/Code/work/tf/app-infrastructure"
 	files, err := getTerraformFiles(root)
 	if err != nil {
 		panic(err)
