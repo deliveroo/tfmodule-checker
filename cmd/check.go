@@ -161,7 +161,7 @@ func main() {
 
 	files, err := getTerraformFiles(root)
 	if err != nil {
-		panic(err)
+		os.Exit(1)
 	}
 	var changes []string
 	for _, file := range files {
