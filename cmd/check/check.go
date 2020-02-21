@@ -38,7 +38,7 @@ type moduleIndex map[string]moduleInfo
 // generic debug wrapper
 func debug(msg string) {
 	if DEBUG {
-		fmt.Printf("DEBUG: %s", msg)
+		fmt.Printf("DEBUG: %s\n", msg)
 	}
 }
 
@@ -104,15 +104,39 @@ func checkTerraformModules(path string, modules moduleIndex) (changes []string, 
 	return changes, nil
 }
 
+// patchModules updates terraform files with updated module files
+func patchModules(path string, modules moduleIndex) (changes []string, err error) {
+	data, err := ioutil.ReadFile(path)
+	if err != nil {
+		fmt.Printf("Failed to read %s: %s\n", path, err)
+		return nil, err
+	}
+	var buf []string
+	lines := strings.Split(string(data), "\n")
+	moduleSourcePtn := `^\s*source\s*=\s*"` + ModuleRepo + `([^/]+)/(.*)\.zip"\s*$`
+	re := regexp.MustCompile(moduleSourcePtn)
+	for n, line := range lines {
+		m := re.FindStringSubmatch(line)
+		if m == nil {
+			continue
+		}
+		if checkModuleVersion(m[1], m[2], modules) {
+			buf = re.Replace
+			changes = append(changes, fmt.Sprintf("%s:%d `%s` version %s (latest %s)", path, n, m[1], m[2], modules[m[1]].Version))
+		}
+	}
+	return changes, nil
+}
+
 // checkModuleVersion report if a module version in code is older than latest available
 func checkModuleVersion(name, version string, modules moduleIndex) bool {
 
-	latest := "n/a" // a dummy string that is higher than any version ;)
-	if v, ok := modules[name]; !ok {
+	latest := "0.0" // a dummy string that is higher than any version ;)
+	if v, ok := modules[name]; ok {
 		latest = v.Version
 	}
-	debug(fmt.Sprintf("%s: %s vs %s\n", name, version, latest))
-	return version < latest
+	debug(fmt.Sprintf("%s: %s vs %s", name, version, latest))
+	return strings.Compare(version, latest) < 0
 }
 
 // makeModuleInfoHash turns a modulesInfo array into a hash using the `name` field of individual moduleInfo structures
@@ -126,10 +150,11 @@ func makeModuleInfoHash(data []moduleInfo) (map[string]moduleInfo, error) {
 
 func main() {
 
-	var root string
+	var root, action string
 
-	flag.BoolVar(&DEBUG, "debug", false, "Enable debug")
-	flag.StringVar(&root, "root", "", "Root of local directory to scan")
+	flag.BoolVar(&DEBUG, "d", false, "Enable debug")
+	flag.StringVar(&root, "r", "", "Root of local directory to scan")
+	flag.StringVar(&action, "a", "check", "Action to take on files: check or patch")
 	flag.Parse()
 
 	if len(root) == 0 {
@@ -159,12 +184,29 @@ func main() {
 	if err != nil {
 		os.Exit(1)
 	}
-	var changes []string
-	for _, file := range files {
-		changes, err = checkTerraformModules(file, modules)
 
-		for _, change := range changes {
-			fmt.Printf("%s\n", change)
+	switch action {
+	case "check":
+		var changes []string
+		for _, file := range files {
+			changes, err = checkTerraformModules(file, modules)
+
+			for _, change := range changes {
+				fmt.Printf("%s\n", change)
+			}
 		}
+	case "patch":
+		var changes []string
+		for _, file := range files {
+			changes, err = patchModules(file, modules)
+
+			for _, change := range changes {
+				fmt.Printf("%s\n", change)
+			}
+		}
+	default:
+		fmt.Printf("Unknown action %s\n", action)
+		os.Exit(1)
 	}
+
 }

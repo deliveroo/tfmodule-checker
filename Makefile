@@ -35,10 +35,6 @@ proj: ## initialise new git project
 format: ## Reformat code to standard
 	go fmt ./...
 
-.PHONY: test
-test: ## test code
-	echo "tests: Not implemeted"
-
 .PHONY: build-no-test
 build-no-test: ## Build project without tests.
 	GOBIN=$(GOBIN) go build  ./...
@@ -56,3 +52,7 @@ clean: ## Clean build files and artifacts.
 	GOBIN=$(GOBIN) go clean ./...
 	rm -rfv $(GOBIN) $(LOG_FILE)
 	rm -f *~ */*~ */*/*~
+
+.PHONY: test
+test:
+	go test ./...
