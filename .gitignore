@@ -1,3 +1,2 @@
-cmd/cmd
-cmd/check
-
+./check
+bin/*

@@ -98,7 +98,7 @@ func checkTerraformModules(path string, modules moduleIndex) (changes []string, 
 			continue
 		}
 		if checkModuleVersion(m[1], m[2], modules) {
-			changes = append(changes, fmt.Sprintf("module '%s' in '%s:%d' is version %s (%s is available)", m[1], path, n, m[2], modules[m[1]].Version))
+			changes = append(changes, fmt.Sprintf("%s:%d `%s` version %s (latest %s)", path, n, m[1], m[2], modules[m[1]].Version))
 		}
 	}
 	return changes, nil
@@ -107,16 +107,12 @@ func checkTerraformModules(path string, modules moduleIndex) (changes []string, 
 // checkModuleVersion report if a module version in code is older than latest available
 func checkModuleVersion(name, version string, modules moduleIndex) bool {
 
-	latest := "n/a"
-	older := false
-	olderText := "older"
-	if v, ok := modules[name]; ok {
+	latest := "n/a" // a dummy string that is higher than any version ;)
+	if v, ok := modules[name]; !ok {
 		latest = v.Version
-		older = version < latest
-		olderText = "not older"
 	}
-	debug(fmt.Sprintf("%s is %s (%s vs %s)\n", name, olderText, version, latest))
-	return older
+	debug(fmt.Sprintf("%s: %s vs %s\n", name, version, latest))
+	return version < latest
 }
 
 // makeModuleInfoHash turns a modulesInfo array into a hash using the `name` field of individual moduleInfo structures
