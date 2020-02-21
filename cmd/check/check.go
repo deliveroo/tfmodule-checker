@@ -128,7 +128,7 @@ func main() {
 
 	var root string
 
-	flag.BoolVar(&DEBUG, "debug", false, "Enable debug on")
+	flag.BoolVar(&DEBUG, "debug", false, "Enable debug")
 	flag.StringVar(&root, "root", "", "Root of local directory to scan")
 	flag.Parse()
 
