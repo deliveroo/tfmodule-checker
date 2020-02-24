@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -82,8 +83,9 @@ func getTerraformFiles(root string) ([]string, error) {
 	return files, err
 }
 
+// TODO: refactor
 // checkTerraformModules compare module version in a terraform file with latest known
-func checkTerraformModules(path string, modules moduleIndex) (changes []string, err error) {
+func checkTerraformModules(path string, modules moduleIndex, reportMode string) (changes []string, err error) {
 	data, err := ioutil.ReadFile(path)
 	if err != nil {
 		fmt.Printf("Failed to read %s: %s\n", path, err)
@@ -97,15 +99,16 @@ func checkTerraformModules(path string, modules moduleIndex) (changes []string, 
 		if m == nil {
 			continue
 		}
-		if checkModuleVersion(m[1], m[2], modules) {
+		if checkModuleVersion(m[1], m[2], modules, reportMode) {
 			changes = append(changes, fmt.Sprintf("%s:%d `%s` version %s (latest %s)", path, n, m[1], m[2], modules[m[1]].Version))
 		}
 	}
 	return changes, nil
 }
 
+// TODO: refactor
 // patchModules updates terraform files with updated module files
-func patchModules(path string, modules moduleIndex) error {
+func patchModules(path string, modules moduleIndex, reportMode string) error {
 	data, err := ioutil.ReadFile(path)
 	if err != nil {
 		fmt.Printf("Failed to read %s: %s\n", path, err)
@@ -120,7 +123,7 @@ func patchModules(path string, modules moduleIndex) error {
 	for _, line := range lines {
 		m := re.FindStringSubmatch(line)
 		if m != nil {
-			if checkModuleVersion(m[1], m[2], modules) {
+			if checkModuleVersion(m[1], m[2], modules, reportMode) {
 				line = repl.ReplaceAllString(line, "/"+modules[m[1]].Version+".zip")
 			}
 		}
@@ -137,14 +140,30 @@ func patchModules(path string, modules moduleIndex) error {
 }
 
 // checkModuleVersion report if a module version in code is older than latest available
-func checkModuleVersion(name, version string, modules moduleIndex) bool {
+// reportMode can be used to filter out Major/Minor change or return all cases
+func checkModuleVersion(name, version string, modules moduleIndex, reportMode string) bool {
 
-	latest := "0.0" // a dummy string that is higher than any version ;)
-	if v, ok := modules[name]; ok {
-		latest = v.Version
+	v := strings.Split(version, ".")
+	vMajor, _ := strconv.Atoi(v[0])
+	vMinor, _ := strconv.Atoi(v[1])
+	mMajor, mMinor := 0, 0 // a dummy string that is higher than any version ;)
+	mVersion, ok := modules[name]
+	if ok {
+		parts := strings.Split(mVersion.Version, ".")
+		mMajor, _ = strconv.Atoi(parts[0])
+		mMinor, _ = strconv.Atoi(parts[1])
 	}
-	debug(fmt.Sprintf("%s: %s vs %s", name, version, latest))
-	return strings.Compare(version, latest) < 0
+	check := false
+	switch reportMode {
+	case "major":
+		check = (vMajor < mMajor)
+	case "minor":
+		check = (vMajor == mMajor) && (vMinor < mMinor)
+	default:
+		check = (vMajor <= mMajor) && (vMinor < mMinor)
+	}
+	debug(fmt.Sprintf("%s: %s vs %s (%t)", name, version, mVersion.Version, check))
+	return check
 }
 
 // makeModuleInfoHash turns a modulesInfo array into a hash using the `name` field of individual moduleInfo structures
@@ -158,11 +177,12 @@ func makeModuleInfoHash(data []moduleInfo) (map[string]moduleInfo, error) {
 
 func main() {
 
-	var root, action string
+	var root, action, report string
 
 	flag.BoolVar(&DEBUG, "d", false, "Enable debug")
 	flag.StringVar(&root, "r", "", "Root of local directory to scan")
 	flag.StringVar(&action, "a", "check", "Action to take on files: check or patch")
+	flag.StringVar(&report, "c", "all", "Report selector 'minor', 'major' or 'all' version changes")
 	flag.Parse()
 
 	if len(root) == 0 {
@@ -193,11 +213,25 @@ func main() {
 		os.Exit(1)
 	}
 
+	var reportMode string
+	switch report {
+	case "minor":
+		fallthrough
+	case "major":
+		fallthrough
+	case "all":
+		reportMode = report
+	default:
+		fmt.Printf("Unknown report selector: %s\n", report)
+		os.Exit(1)
+	}
+	debug(reportMode)
+
 	switch action {
 	case "check":
 		var changes []string
 		for _, file := range files {
-			changes, err = checkTerraformModules(file, modules)
+			changes, err = checkTerraformModules(file, modules, reportMode)
 
 			for _, change := range changes {
 				fmt.Printf("%s\n", change)
@@ -205,7 +239,7 @@ func main() {
 		}
 	case "patch":
 		for _, file := range files {
-			err = patchModules(file, modules)
+			err = patchModules(file, modules, reportMode)
 		}
 	default:
 		fmt.Printf("Unknown action %s\n", action)
