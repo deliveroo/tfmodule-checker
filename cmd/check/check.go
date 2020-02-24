@@ -177,18 +177,14 @@ func makeModuleInfoHash(data []moduleInfo) (map[string]moduleInfo, error) {
 
 func main() {
 
-	var root, action, report string
+	var action, filelist, report, root string
 
 	flag.BoolVar(&DEBUG, "d", false, "Enable debug")
 	flag.StringVar(&root, "r", "", "Root of local directory to scan")
 	flag.StringVar(&action, "a", "check", "Action to take on files: check or patch")
 	flag.StringVar(&report, "c", "all", "Report selector 'minor', 'major' or 'all' version changes")
+	flag.StringVar(&filelist, "f", "", "Check supplied file list")
 	flag.Parse()
-
-	if len(root) == 0 {
-		fmt.Printf("path to scan not set")
-		os.Exit(1)
-	}
 
 	if DEBUG {
 		debug("Debug mode is on")
@@ -208,9 +204,19 @@ func main() {
 	var modules = make(moduleIndex)
 	modules, err = makeModuleInfoHash(modulesJSON.Modules)
 
-	files, err := getTerraformFiles(root)
-	if err != nil {
-		os.Exit(1)
+	var files []string
+	if filelist != "" {
+		files = strings.Split(filelist, " ")
+	} else {
+		if root != "" {
+			files, err = getTerraformFiles(root)
+			if err != nil {
+				os.Exit(1)
+			}
+		} else {
+			fmt.Printf("You must set either -f or -r options")
+			os.Exit(1)
+		}
 	}
 
 	var reportMode string
@@ -225,7 +231,6 @@ func main() {
 		fmt.Printf("Unknown report selector: %s\n", report)
 		os.Exit(1)
 	}
-	debug(reportMode)
 
 	switch action {
 	case "check":
