@@ -105,27 +105,35 @@ func checkTerraformModules(path string, modules moduleIndex) (changes []string, 
 }
 
 // patchModules updates terraform files with updated module files
-func patchModules(path string, modules moduleIndex) (changes []string, err error) {
+func patchModules(path string, modules moduleIndex) error {
 	data, err := ioutil.ReadFile(path)
 	if err != nil {
 		fmt.Printf("Failed to read %s: %s\n", path, err)
-		return nil, err
+		return err
 	}
-	var buf []string
+	var buf []byte
 	lines := strings.Split(string(data), "\n")
-	moduleSourcePtn := `^\s*source\s*=\s*"` + ModuleRepo + `([^/]+)/(.*)\.zip"\s*$`
-	re := regexp.MustCompile(moduleSourcePtn)
-	for n, line := range lines {
+	moduleSourceFindPtn := `^\s*source\s*=\s*"` + ModuleRepo + `([^/]+)/([^/]+)\.zip"\s*$`
+	moduleSourceReplacePtn := `/[^/]+\.zip`
+	re := regexp.MustCompile(moduleSourceFindPtn)
+	repl := regexp.MustCompile(moduleSourceReplacePtn)
+	for _, line := range lines {
 		m := re.FindStringSubmatch(line)
-		if m == nil {
-			continue
+		if m != nil {
+			if checkModuleVersion(m[1], m[2], modules) {
+				line = repl.ReplaceAllString(line, "/"+modules[m[1]].Version+".zip")
+			}
 		}
-		if checkModuleVersion(m[1], m[2], modules) {
-			buf = re.Replace
-			changes = append(changes, fmt.Sprintf("%s:%d `%s` version %s (latest %s)", path, n, m[1], m[2], modules[m[1]].Version))
-		}
+		line = line + "\n"
+		buf = append(buf, line...)
 	}
-	return changes, nil
+	// overwrite file (we want something we can push as a PR)
+	if err = ioutil.WriteFile(path, buf, os.FileMode(0644)); err != nil {
+		fmt.Printf("Failed to write to %s: %s\n", path, err)
+		return err
+	}
+
+	return nil
 }
 
 // checkModuleVersion report if a module version in code is older than latest available
@@ -196,13 +204,8 @@ func main() {
 			}
 		}
 	case "patch":
-		var changes []string
 		for _, file := range files {
-			changes, err = patchModules(file, modules)
-
-			for _, change := range changes {
-				fmt.Printf("%s\n", change)
-			}
+			err = patchModules(file, modules)
 		}
 	default:
 		fmt.Printf("Unknown action %s\n", action)
