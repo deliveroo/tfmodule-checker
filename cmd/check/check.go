@@ -70,10 +70,13 @@ func decodeJSON(buf []byte) (m modulesInfo, err error) {
 	return modulesJSON, err
 }
 
-// getTerraformFiles walks the given path and returns a list of *.tf files found
-func getTerraformFiles(root string) ([]string, error) {
+// scanTerraformDir walks the given path and returns a list of *.tf files found
+func scanTerraformDir(root string) ([]string, error) {
 	var files []string
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
 		m, _ := regexp.MatchString(`.*\.tf$`, path)
 		if m == true {
 			files = append(files, path)
@@ -175,49 +178,61 @@ func makeModuleInfoHash(data []moduleInfo) (map[string]moduleInfo, error) {
 	return modulesInfoHash, nil
 }
 
+// Print out command usage and exit
+func usage() {
+	flag.Usage()
+	os.Exit(1)
+}
+
+// generic exit on error wrapper
+func dieOnError(err error) {
+	if err != nil {
+		fmt.Printf("%v\n", err)
+		os.Exit(1)
+	}
+}
+
 func main() {
 
-	var action, filelist, report, root string
+	var action, report string
+	var err error
 
+	flag.Usage = func() {
+		cmdLine := fmt.Sprintf("[-a action] [-c change_type] [files or directories...]\n")
+		cmdLine += "Checks or patches directories and/or files for obsolete terraform modules.\n"
+		cmdLine += fmt.Sprintf("The source of truth is %s\n", ModuleJSONURL)
+		cmdLine += "Options are:"
+		fmt.Fprintf(os.Stdout, "Usage: %s %s\n", filepath.Base(os.Args[0]), cmdLine)
+		flag.PrintDefaults()
+	}
 	flag.BoolVar(&DEBUG, "d", false, "Enable debug")
-	flag.StringVar(&root, "r", "", "Root of local directory to scan")
-	flag.StringVar(&action, "a", "check", "Action to take on files: check or patch")
-	flag.StringVar(&report, "c", "all", "Report selector 'minor', 'major' or 'all' version changes")
-	flag.StringVar(&filelist, "f", "", "Check supplied file list")
+	flag.StringVar(&action, "a", "check", "Action to take on files: 'check' or 'patch'")
+	flag.StringVar(&report, "c", "all", "Filter module version changes: only 'minor', 'major' or 'all'")
 	flag.Parse()
 
 	if DEBUG {
 		debug("Debug mode is on")
 	}
 
-	buf, err := downloadFile(ModuleJSONURL)
-	if err != nil {
-		os.Exit(1)
+	var files []string
+	if len(flag.Args()) == 0 {
+		usage()
 	}
+	for _, f := range flag.Args() {
+		g, err := scanTerraformDir(f)
+		dieOnError(err)
+		files = append(files, g...)
+	}
+
+	buf, err := downloadFile(ModuleJSONURL)
+	dieOnError(err)
 
 	var modulesJSON modulesInfo
 	modulesJSON, err = decodeJSON(buf)
-	if err != nil {
-		os.Exit(1)
-	}
+	dieOnError(err)
 
 	var modules = make(moduleIndex)
 	modules, err = makeModuleInfoHash(modulesJSON.Modules)
-
-	var files []string
-	if filelist != "" {
-		files = strings.Split(filelist, " ")
-	} else {
-		if root != "" {
-			files, err = getTerraformFiles(root)
-			if err != nil {
-				os.Exit(1)
-			}
-		} else {
-			fmt.Printf("You must set either -f or -r options")
-			os.Exit(1)
-		}
-	}
 
 	var reportMode string
 	switch report {
@@ -228,8 +243,7 @@ func main() {
 	case "all":
 		reportMode = report
 	default:
-		fmt.Printf("Unknown report selector: %s\n", report)
-		os.Exit(1)
+		usage()
 	}
 
 	switch action {
@@ -247,8 +261,7 @@ func main() {
 			err = patchModules(file, modules, reportMode)
 		}
 	default:
-		fmt.Printf("Unknown action %s\n", action)
-		os.Exit(1)
+		usage()
 	}
 
 }
