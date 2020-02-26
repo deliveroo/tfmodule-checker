@@ -86,7 +86,7 @@ func scanTerraformDir(root string) ([]string, error) {
 	return files, err
 }
 
-// TODO: refactor
+// TODO: refactor and merge with patchModules
 // checkTerraformModules compare module version in a terraform file with latest known
 func checkTerraformModules(path string, modules moduleIndex, reportMode string) (changes []string, err error) {
 	data, err := ioutil.ReadFile(path)
@@ -109,7 +109,7 @@ func checkTerraformModules(path string, modules moduleIndex, reportMode string) 
 	return changes, nil
 }
 
-// TODO: refactor
+// TODO: refactor and merge with checkTerraformModules
 // patchModules updates terraform files with updated module files
 func patchModules(path string, modules moduleIndex, reportMode string) error {
 	data, err := ioutil.ReadFile(path)
@@ -142,19 +142,23 @@ func patchModules(path string, modules moduleIndex, reportMode string) error {
 	return nil
 }
 
+// extractVersion convert string version M.N into int variables
+func extractVersion(version string) (int, int) {
+	v := strings.Split(version, ".")
+	m, _ := strconv.Atoi(v[0])
+	n, _ := strconv.Atoi(v[1])
+	return m, n
+}
+
 // checkModuleVersion report if a module version in code is older than latest available
 // reportMode can be used to filter out Major/Minor change or return all cases
 func checkModuleVersion(name, version string, modules moduleIndex, reportMode string) bool {
 
-	v := strings.Split(version, ".")
-	vMajor, _ := strconv.Atoi(v[0])
-	vMinor, _ := strconv.Atoi(v[1])
+	vMajor, vMinor := extractVersion(version)
 	mMajor, mMinor := 0, 0 // a dummy string that is higher than any version ;)
 	mVersion, ok := modules[name]
 	if ok {
-		parts := strings.Split(mVersion.Version, ".")
-		mMajor, _ = strconv.Atoi(parts[0])
-		mMinor, _ = strconv.Atoi(parts[1])
+		mMajor, mMinor = extractVersion(mVersion.Version)
 	}
 	check := false
 	switch reportMode {
