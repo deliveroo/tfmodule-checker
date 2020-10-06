@@ -123,14 +123,16 @@ func patchModules(path string, modules moduleIndex, reportMode string) error {
 	moduleSourceReplacePtn := `/[^/]+\.zip`
 	re := regexp.MustCompile(moduleSourceFindPtn)
 	repl := regexp.MustCompile(moduleSourceReplacePtn)
-	for _, line := range lines {
+	for i, line := range lines {
 		m := re.FindStringSubmatch(line)
 		if m != nil {
 			if checkModuleVersion(m[1], m[2], modules, reportMode) {
 				line = repl.ReplaceAllString(line, "/"+modules[m[1]].Version+".zip")
 			}
 		}
-		line = line + "\n"
+		if i != len(lines)-1 {
+			line = line + "\n"
+		}
 		buf = append(buf, line...)
 	}
 	// overwrite file (we want something we can push as a PR)
