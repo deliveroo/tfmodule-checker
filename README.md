@@ -10,7 +10,8 @@ Run the `make` command to see all other options.
 
 # Install
 
-Copy `./check` in you PATH (ex: /usr/local/bin)
+Compile and install the binary: `make clean && make build && make install`. This puts the new binary into `bin/check`
+Copy or symlink `./check` in you PATH (ex: /usr/local/bin)
 
 # Manual usage:
 
