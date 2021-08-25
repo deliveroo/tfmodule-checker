@@ -182,6 +182,22 @@ func makeModuleInfoHash(data []moduleInfo) (map[string]moduleInfo, error) {
 	return modulesInfoHash, nil
 }
 
+func filterModulesJSON(modulesJSON modulesInfo, moduleFilter string) modulesInfo {
+	if moduleFilter == "" {
+		return modulesJSON
+	}
+
+	for _, module := range modulesJSON.Modules {
+		if module.Name == moduleFilter {
+			modulesJSON.Modules = []moduleInfo{module}
+			return modulesJSON
+		}
+	}
+
+	modulesJSON.Modules = []moduleInfo{}
+	return modulesJSON
+}
+
 // Print out command usage and exit
 func usage() {
 	flag.Usage()
@@ -198,11 +214,11 @@ func dieOnError(err error) {
 
 func main() {
 
-	var action, report string
+	var action, report, moduleFilter string
 	var err error
 
 	flag.Usage = func() {
-		cmdLine := fmt.Sprintf("[-a action] [-c change_type] [files or directories...]\n")
+		cmdLine := fmt.Sprintf("[-a action] [-c change_type] [-m module] [files or directories...]\n")
 		cmdLine += "Checks or patches directories and/or files for obsolete terraform modules.\n"
 		cmdLine += fmt.Sprintf("The source of truth is %s\n", ModuleJSONURL)
 		cmdLine += "Options are:"
@@ -212,6 +228,7 @@ func main() {
 	flag.BoolVar(&DEBUG, "d", false, "Enable debug")
 	flag.StringVar(&action, "a", "check", "Action to take on files: 'check' or 'patch'")
 	flag.StringVar(&report, "c", "all", "Filter module version changes: only 'minor', 'major' or 'all'")
+	flag.StringVar(&moduleFilter, "m", "", "Filter by specified module")
 	flag.Parse()
 
 	if DEBUG {
@@ -235,8 +252,10 @@ func main() {
 	modulesJSON, err = decodeJSON(buf)
 	dieOnError(err)
 
+	filteredJSONModules := filterModulesJSON(modulesJSON, moduleFilter)
+
 	var modules = make(moduleIndex)
-	modules, err = makeModuleInfoHash(modulesJSON.Modules)
+	modules, err = makeModuleInfoHash(filteredJSONModules.Modules)
 
 	var reportMode string
 	switch report {
